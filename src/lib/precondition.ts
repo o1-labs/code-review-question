@@ -18,7 +18,6 @@ export {
   Account,
   Network,
   assertPreconditionInvariants,
-  cleanPreconditionsCache,
   AccountValue,
   NetworkValue,
 };
@@ -48,26 +47,6 @@ function Account(party: Party): Account {
   let context = getPreconditionContextExn(party);
   return preconditionClass(layout, 'account', party, context);
 }
-
-let unimplementedPreconditions: LongKey[] = [
-  // these are all unimplemented because we can't parse the hash yet
-  'account.receiptChainHash',
-  'network.snarkedLedgerHash',
-  'network.nextEpochData.ledger.hash',
-  'network.nextEpochData.seed',
-  'network.nextEpochData.startCheckpoint',
-  'network.nextEpochData.lockCheckpoint',
-  'network.stakingEpochData.ledger.hash',
-  'network.stakingEpochData.seed',
-  'network.stakingEpochData.startCheckpoint',
-  'network.stakingEpochData.lockCheckpoint',
-  // this is unimplemented because the field is missing on the account endpoint
-  'account.provedState',
-  // this is partially unimplemented because the field is not returned by the local blockchain
-  'account.delegate',
-  // this is unimplemented because setting this precondition made the integration test fail
-  'network.timestamp',
-];
 
 function preconditionClass(
   layout: Layout,
@@ -120,21 +99,16 @@ function preconditionSubclass<
   party: Party,
   longKey: K,
   fieldType: AsFieldElements<U>,
-  context: PreconditionContext
+  { read, vars, constrained }: PreconditionContext
 ) {
   return {
     get() {
-      if (unimplementedPreconditions.includes(longKey)) {
-        let self = context.isSelf ? 'this' : 'party';
-        throw Error(`${self}.${longKey}.get() is not implemented yet.`);
-      }
-      let { read, vars } = context;
       read.add(longKey);
       return (vars[longKey] ??
         (vars[longKey] = getVariable(party, longKey, fieldType))) as U;
     },
     assertEquals(value: U) {
-      context.constrained.add(longKey);
+      constrained.add(longKey);
       let property = getPath(
         party.body.preconditions,
         longKey
@@ -150,7 +124,7 @@ function preconditionSubclass<
       }
     },
     assertNothing() {
-      context.constrained.add(longKey);
+      constrained.add(longKey);
     },
   };
 }
@@ -213,11 +187,6 @@ function initializePreconditions(party: Party, isSelf: boolean) {
   });
 }
 
-function cleanPreconditionsCache(party: Party) {
-  let context = preconditionContexts.get(party);
-  if (context !== undefined) context.vars = {};
-}
-
 function assertPreconditionInvariants(party: Party) {
   let context = getPreconditionContextExn(party);
   let self = context.isSelf ? 'this' : 'party';
@@ -264,6 +233,7 @@ type Network = PreconditionClassType<NetworkPrecondition>;
 // TODO: OK how we read delegate from delegateAccount?
 // TODO: no graphql field for provedState yet
 // TODO: figure out serialization of receiptChainHash
+// TODO: OK how we read sequenceState from sequenceEvents?
 // TODO: should we add account.state? then we should change the structure on `Fetch.Account` which is stupid anyway
 // then can just use circuitArray(Field, 8) as the type
 type AccountPrecondition = Omit<Preconditions['account'], 'state'>;
@@ -365,6 +335,11 @@ type FlatPreconditionValue = {
   [S in PreconditionFlatEntry<NetworkPrecondition> as `network.${S[0]}`]: S[2];
 } & {
   [S in PreconditionFlatEntry<AccountPrecondition> as `account.${S[0]}`]: S[2];
+};
+type FlatPrecondition = {
+  [S in PreconditionFlatEntry<NetworkPrecondition> as `network.${S[0]}`]: S[1];
+} & {
+  [S in PreconditionFlatEntry<AccountPrecondition> as `account.${S[0]}`]: S[1];
 };
 
 type LongKey = keyof FlatPreconditionValue;

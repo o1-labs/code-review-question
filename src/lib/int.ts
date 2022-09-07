@@ -6,11 +6,13 @@ export { UInt32, UInt64, Int64 };
 class UInt64 extends CircuitValue implements Types.UInt64 {
   @prop value: Field;
   static NUM_BITS = 64;
-  _type?: 'UInt64';
+  type = 'UInt64' as const;
 
   constructor(value: Field) {
     super();
     this.value = value;
+    // TODO type breaks Circuit.if for some reason
+    delete (this as any).type;
   }
 
   static get zero() {
@@ -180,11 +182,13 @@ class UInt64 extends CircuitValue implements Types.UInt64 {
 class UInt32 extends CircuitValue implements Types.UInt32 {
   @prop value: Field;
   static NUM_BITS = 32;
-  _type?: 'UInt32';
+  type = 'UInt32' as const;
 
   constructor(value: Field) {
     super();
     this.value = value;
+    // TODO type breaks Circuit.if for some reason
+    delete (this as any).type;
   }
 
   static get zero(): UInt32 {

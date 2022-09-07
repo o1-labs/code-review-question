@@ -8,6 +8,7 @@ import { NetworkValue } from './precondition';
 export {
   fetchAccount,
   fetchLastBlock,
+  fetchBlock,
   parseFetchedAccount,
   markAccountToBeFetched,
   markNetworkToBeFetched,
@@ -347,13 +348,14 @@ function addCachedAccountInternal(
 }
 
 async function fetchLastBlock(graphqlEndpoint = defaultGraphqlEndpoint) {
-  let [resp, error] = await makeGraphqlRequest(lastBlockQuery, graphqlEndpoint);
+  let bestChainQuery = `{ bestChain { protocolState { consensusState { blockHeight } } } }`;
+  let [resp, error] = await makeGraphqlRequest(bestChainQuery, graphqlEndpoint);
   if (error) throw Error(error.statusText);
-  let lastBlock = resp?.data?.bestChain?.[0];
-  if (lastBlock === undefined) {
-    throw Error('Failed to fetch latest network state.');
-  }
-  let network = parseFetchedBlock(lastBlock);
+  let blockHeights = resp?.data.bestChain.map(
+    (block: FetchedBlock) => block.protocolState.consensusState.blockHeight
+  );
+  let lastHeight = blockHeights[blockHeights.length - 1];
+  let network = await fetchBlock(lastHeight);
   networkCache[graphqlEndpoint] = {
     network,
     graphqlEndpoint,
@@ -362,8 +364,20 @@ async function fetchLastBlock(graphqlEndpoint = defaultGraphqlEndpoint) {
   return network;
 }
 
-const lastBlockQuery = `{
-  bestChain(maxLength: 1) {
+async function fetchBlock(
+  blockHeight: number,
+  graphqlEndpoint = defaultGraphqlEndpoint
+) {
+  let [resp, error] = await makeGraphqlRequest(
+    blockQuery(blockHeight),
+    graphqlEndpoint
+  );
+  if (error) throw Error(error.statusText);
+  return parseFetchedBlock(resp?.data?.block as FetchedBlock);
+}
+
+const blockQuery = (height: number) => `{
+  block(height: ${height}) {
     protocolState {
       blockchainState {
         snarkedLedgerHash
